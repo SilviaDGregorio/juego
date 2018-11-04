@@ -16,7 +16,7 @@ MAX_SHOTS      = 2      #most player bullets onscreen
 ALIEN_ODDS     = 22     #chances a new alien appears
 BOMB_ODDS      = 60    #chances a new bomb will drop
 ALIEN_RELOAD   = 12     #frames between new aliens
-SCREENRECT     = Rect(0, 0, 640, 480)
+SCREENRECT     = Rect(0, 0, 699, 525)
 SCORE          = 0
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
@@ -74,15 +74,10 @@ class Player(pygame.sprite.Sprite):
         self.origtop = self.rect.top
         self.facing = -1
 
-    def move(self, direction):
-        if direction: self.facing = direction
-        self.rect.move_ip(direction*self.speed, 0)
+    def move(self, direction_x, direction_y):
+        # if direction: self.facing = direction
+        self.rect.move_ip(direction_x*self.speed, direction_y*self.speed)
         self.rect = self.rect.clamp(SCREENRECT)
-        if direction < 0:
-            self.image = self.images[0]
-        elif direction > 0:
-            self.image = self.images[1]
-        self.rect.top = self.origtop - (self.rect.left//self.bounce%2)
 
     def gunpos(self):
         pos = self.facing*self.gun_offset + self.rect.centerx
@@ -175,9 +170,62 @@ class Score(pygame.sprite.Sprite):
             self.image = self.font.render(msg, 0, self.color)
 
 
+class Map(object):
+    _map = {}
+
+    def __init__(self, width, height):
+        super(Map, self).__init__()
+        self.width = width
+        self.height = height
+        for y in range(0, self.height):
+            self._map[y] = {}
+            for x in range(0, self.width):
+                self._map[y][x] = '0'
+
+    def __init__(self, rows):
+        super(Map, self).__init__()
+        self.height = len(rows)
+        self.width = len(rows[0])
+        for y, row in enumerate(rows):
+            self._map[y] = {}
+            for x, item in enumerate(row):
+                self._map[y][x] = item
+
+    def get(self, x, y):
+        return self._map[y][x]
+
+    def load(mapstring):
+        '''
+        Creates a squared map from a string separated by \n
+        0 => outside of the map
+        # => walkable path
+        | => door
+
+        '''
+        rows = mapstring.strip().split('\n')
+        return Map(rows)
+
+
 class App(object):
     def __init__(self):
         super(App, self).__init__()
+
+    def draw_map(self, map, screen):
+        #create the background, tile the bgd image
+        bgdtile = load_image('bg.png')
+        doortile = load_image('door.png')
+        background = pygame.Surface(SCREENRECT.size)
+
+        for y in range(0, map.height):
+            for x in range(0, map.width):
+                if map.get(x, y) == '|':
+                    background.blit(doortile, (x * bgdtile.get_width(), y * bgdtile.get_height()))
+                elif map.get(x, y) == '#':
+                    background.blit(bgdtile, (x * bgdtile.get_width(), y * bgdtile.get_height()))
+
+        screen.blit(background, (0, 0))
+        pygame.display.flip()
+        return background
 
     def main(self, winstyle=0):
         # Initialize pygame
@@ -207,13 +255,8 @@ class App(object):
         pygame.display.set_caption('Pygame Aliens')
         pygame.mouse.set_visible(0)
 
-        #create the background, tile the bgd image
-        bgdtile = load_image('background.gif')
-        background = pygame.Surface(SCREENRECT.size)
-        for x in range(0, SCREENRECT.width, bgdtile.get_width()):
-            background.blit(bgdtile, (x, 0))
-        screen.blit(background, (0,0))
-        pygame.display.flip()
+        main_map = Map.load('|#|\n0#0\n|#|\n0#0\n|#|\n0#0\n0#0\n0#0\n0#0\n')
+        background = self.draw_map(main_map, screen)
 
         #load the sound effects
         boom_sound = load_sound('boom.wav')
@@ -247,7 +290,7 @@ class App(object):
         #initialize our starting sprites
         global SCORE
         player = Player()
-        Alien() #note, this 'lives' because it goes into a sprite group
+        # Alien() #note, this 'lives' because it goes into a sprite group
         if pygame.font:
             all.add(Score())
 
@@ -268,8 +311,10 @@ class App(object):
             all.update()
 
             #handle player input
-            direction = keystate[K_RIGHT] - keystate[K_LEFT]
-            player.move(direction)
+            direction_x = keystate[K_RIGHT] - keystate[K_LEFT]
+            direction_y = keystate[K_DOWN] - keystate[K_UP]
+
+            player.move(direction_x, direction_y)
             firing = keystate[K_SPACE]
             if not player.reloading and firing and len(shots) < MAX_SHOTS:
                 Shot(player.gunpos())
@@ -277,11 +322,11 @@ class App(object):
             player.reloading = firing
 
             # Create new alien
-            if alienreload:
-                alienreload = alienreload - 1
-            elif not int(random.random() * ALIEN_ODDS):
-                Alien()
-                alienreload = ALIEN_RELOAD
+            # if alienreload:
+            #     alienreload = alienreload - 1
+            # elif not int(random.random() * ALIEN_ODDS):
+            #     Alien()
+            #     alienreload = ALIEN_RELOAD
 
             # Drop bombs
             if lastalien and not int(random.random() * BOMB_ODDS):
